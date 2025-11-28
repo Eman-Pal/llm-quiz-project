@@ -19,6 +19,9 @@ MY_SECRET = "my-quiz-secret-8712"
 def root():
     return {"message": "Smart quiz solver running (safe mode)"}
 
+@app.get("/quiz")
+def quiz_info():
+    return {"message": "Quiz endpoint is alive. Use POST to submit."}
 
 def fallback_answer(page_text: str):
     """
