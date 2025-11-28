@@ -17,7 +17,14 @@ MY_SECRET = "my-quiz-secret-8712"
 
 @app.get("/")
 def root():
-    return {"message": "Smart quiz solver running (safe mode)"}
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "path"):
+            routes.append(route.path)
+    return {
+        "message": "Routes currently loaded",
+        "routes": routes
+    }
 
 @app.get("/quiz")
 def quiz_info():
