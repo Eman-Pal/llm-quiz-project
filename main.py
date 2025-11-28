@@ -1,60 +1,68 @@
 print("********** RENDER IS RUNNING THIS FILE **********")
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import requests
 import time
 import os
 
-# Try to import OpenAI safely
+# --- OpenAI (safe import) ---
 try:
     from openai import OpenAI
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 except:
     client = None
 
+# --- App ---
 app = FastAPI()
 
 MY_SECRET = "my-quiz-secret-8712"
 
+# ----- REQUEST BODY MODEL (THIS FIXES YOUR SWAGGER BOX) -----
+
+class QuizRequest(BaseModel):
+    email: str
+    secret: str
+    url: str
+
+
+# ----- ROOT -----
+
 @app.get("/")
 def root():
-    routes = []
-    for route in app.routes:
-        if hasattr(route, "path"):
-            routes.append(route.path)
+    routes = [route.path for route in app.routes if hasattr(route, "path")]
     return {
         "message": "Routes currently loaded",
         "routes": routes
     }
 
+
+# ----- QUIZ INFO -----
+
 @app.get("/quiz")
 def quiz_info():
     return {"message": "Quiz endpoint is alive. Use POST to submit."}
 
+
+# ----- FALLBACK ANSWER (WHEN GPT IS NOT AVAILABLE) -----
+
 def fallback_answer(page_text: str):
-    """
-    Used when OpenAI is not available.
-    Tries to guess answer from page.
-    """
     if "anything you want" in page_text:
         return "anything you want"
 
     if "sum" in page_text.lower():
-        # crude attempt to detect numbers
         import re
         numbers = re.findall(r"\d+", page_text)
         if numbers:
             return str(sum(map(int, numbers)))
 
-    # Default fallback
     return "anything you want"
 
 
+# ----- GET ANSWER -----
+
 def get_answer(page_text):
-    """
-    Try OpenAI first. If it fails, use fallback.
-    """
 
     if client is not None:
         try:
@@ -83,15 +91,16 @@ No explanation.
         except Exception as e:
             print("OpenAI failed, using fallback:", e)
 
-    # Use fallback
     return fallback_answer(page_text)
 
 
+# ----- SOLVE ONE QUIZ -----
+
 def solve_one_quiz(email, secret, quiz_url):
+
     page = requests.get(quiz_url)
     page_text = page.text
 
-    # Detect origin
     origin = "/".join(quiz_url.split("/")[:3])
     submit_url = origin + "/submit"
 
@@ -108,25 +117,23 @@ def solve_one_quiz(email, secret, quiz_url):
     return response.json(), answer
 
 
+# ✅✅✅ THIS IS THE CORRECT QUIZ ROUTE ✅✅✅
+
 @app.post("/quiz")
-async def quiz(request: Request):
+async def quiz(data: QuizRequest):
 
-    try:
-        data = await request.json()
-    except:
-        return JSONResponse(status_code=400, content={"error": "Invalid JSON"})
-
-    if data.get("secret") != MY_SECRET:
+    if data.secret != MY_SECRET:
         return JSONResponse(status_code=403, content={"error": "Invalid secret"})
 
-    email = data["email"]
-    secret = data["secret"]
-    current_url = data["url"]
+    email = data.email
+    secret = data.secret
+    current_url = data.url
 
     start_time = time.time()
     history = []
 
     while current_url and (time.time() - start_time) < 180:
+
         result, answer_used = solve_one_quiz(email, secret, current_url)
 
         history.append({
